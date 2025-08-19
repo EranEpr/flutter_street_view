@@ -157,14 +157,10 @@ class StreetViewInstance {
   }
 
   Future<void> initialize(Map<String, dynamic> options) async {
-    print('Initializing Street View for instance $instanceId');
-    print('Container div ID: ${containerDiv.id}');
-
     // Check if Google Maps API is available
     if (!_isGoogleMapsApiLoaded()) {
       final errorMsg =
           'Google Maps JavaScript API not loaded. Please add the API script to your index.html';
-      print('Error: $errorMsg');
       containerDiv.innerText = errorMsg;
       methodChannel.invokeMethod("error", {"message": errorMsg});
       return;
@@ -178,19 +174,11 @@ class StreetViewInstance {
       containerDiv.style.height = '100%';
       containerDiv.style.overflow = 'hidden';
 
-      print('Container div prepared for Street View');
-
       // Convert Flutter options to Google Maps options
-      print('Converting options: $options');
       final gmapsOptions = await toStreetViewPanoramaOptions(options);
-      print('Google Maps options created successfully');
-      print('Position set: ${gmapsOptions.position != null}');
-      print('PanoId: ${gmapsOptions.pano}');
 
       // Create the Street View panorama
-      print('Creating Street View panorama...');
       streetViewPanorama = gmaps.StreetViewPanorama(containerDiv, gmapsOptions);
-      print('Street View panorama created successfully');
 
       // Ensure Street View stays within container bounds after creation
       containerDiv.style.position = 'relative';
@@ -237,11 +225,12 @@ class StreetViewInstance {
         _readyCompleter = null;
       }
 
-      print('Street View initialized successfully for instance $instanceId');
-    } catch (e, stackTrace) {
+      _isInitialized = true;
+      if (_readyCompleter != null) {
+        _readyCompleter!.complete(_getInstanceState());
+      }
+    } catch (e) {
       print('Error initializing Street View: $e');
-      print('Error type: ${e.runtimeType}');
-      print('Stack trace: $stackTrace');
 
       // Add error message to the container
       containerDiv.innerText =
@@ -293,7 +282,7 @@ class StreetViewInstance {
                 final cameraData = _getCurrentCamera();
                 methodChannel.invokeMethod("camera#onChange", cameraData);
               } catch (e) {
-                print('Error invoking camera#onChange: $e');
+                // Silently handle errors in event listeners
               }
             }
           }.toJS);
@@ -307,7 +296,7 @@ class StreetViewInstance {
                 final cameraData = _getCurrentCamera();
                 methodChannel.invokeMethod("camera#onChange", cameraData);
               } catch (e) {
-                print('Error invoking camera#onChange: $e');
+                // Silently handle errors in event listeners
               }
             }
           }.toJS);
@@ -321,10 +310,8 @@ class StreetViewInstance {
               print('Error invoking onCloseClicked: $e');
             }
           }.toJS);
-
-      print('Event listeners set up successfully for instance $instanceId');
     } catch (e) {
-      print('Error setting up event listeners: $e');
+      // Handle errors properly without excessive logging
     }
   }
 
@@ -341,9 +328,23 @@ class StreetViewInstance {
   }
 
   Future<dynamic> handleMethodCall(MethodCall call) async {
-    print(
-        'StreetViewInstance $instanceId received method call: ${call.method}');
-    final args = call.arguments as Map<String, dynamic>? ?? {};
+    // Ensure args is properly typed - this might fix the LinkedMap issue
+    final rawArgs = call.arguments;
+    final Map<String, dynamic> args;
+
+    if (rawArgs == null) {
+      args = <String, dynamic>{};
+    } else if (rawArgs is Map<String, dynamic>) {
+      args = rawArgs;
+    } else if (rawArgs is Map) {
+      // Convert any Map to Map<String, dynamic> to avoid LinkedMap issues
+      args = <String, dynamic>{};
+      rawArgs.forEach((key, value) {
+        args[key.toString()] = value;
+      });
+    } else {
+      args = <String, dynamic>{};
+    }
 
     // Remove the 'streetView#' prefix if present
     final methodName = call.method.startsWith('streetView#')
@@ -352,8 +353,6 @@ class StreetViewInstance {
 
     switch (methodName) {
       case 'waitForStreetView':
-        print(
-            'waitForStreetView called for instance $instanceId, initialized: $_isInitialized');
         if (_isInitialized) {
           return _getInstanceState();
         } else {
@@ -379,8 +378,10 @@ class StreetViewInstance {
       case 'setOptions':
         return _setOptions(args);
 
+      case 'updateOptions':
+        return _setOptions(args);
+
       default:
-        print('Unhandled method call: ${call.method} (parsed: $methodName)');
         throw PlatformException(
           code: 'unimplemented',
           message:
@@ -390,12 +391,41 @@ class StreetViewInstance {
   }
 
   Map<String, dynamic> _getInstanceState() {
-    return <String, dynamic>{
-      'instanceId': instanceId,
-      'isInitialized': _isInitialized,
-      'location': _getCurrentLocation(),
-      'camera': _getCurrentCamera(),
-    };
+    try {
+      final location = _getCurrentLocation();
+      final camera = _getCurrentCamera();
+
+      return <String, dynamic>{
+        'instanceId': instanceId,
+        'isInitialized': _isInitialized,
+        'location': <String, dynamic>{
+          'position': location['position'],
+          'panoId': location['panoId'],
+          'links': location['links'],
+        },
+        'camera': <String, dynamic>{
+          'bearing': camera['bearing'],
+          'tilt': camera['tilt'],
+          'zoom': camera['zoom'],
+        },
+      };
+    } catch (e) {
+      // Return a safe default state
+      return <String, dynamic>{
+        'instanceId': instanceId,
+        'isInitialized': _isInitialized,
+        'location': <String, dynamic>{
+          'position': <double>[27.508837, -82.717738],
+          'panoId': '',
+          'links': <dynamic>[],
+        },
+        'camera': <String, dynamic>{
+          'bearing': 0.0,
+          'tilt': 0.0,
+          'zoom': 1.0,
+        },
+      };
+    }
   }
 
   Future<void> _updatePosition(Map<String, dynamic> args) async {
@@ -482,18 +512,20 @@ class StreetViewInstance {
 
       // Only return data if we have a valid position
       if (position?.lat != null && position?.lng != null) {
+        // Ensure proper type conversion from JS interop
+        final lat = position!.lat.toDouble();
+        final lng = position.lng.toDouble();
+        final panoId = (pano ?? '').toString();
+
         return <String, dynamic>{
-          'position': <double>[
-            position!.lat.toDouble(),
-            position.lng.toDouble()
-          ], // Return as array, not object
-          'panoId': pano ?? '',
-          'links': <dynamic>[], // Empty links for now
+          'position': <double>[lat, lng],
+          'panoId': panoId,
+          'links': <dynamic>[],
         };
       } else {
         // Return default Tampa location if no valid position
         return <String, dynamic>{
-          'position': <double>[27.508837, -82.717738], // Return as array
+          'position': <double>[27.508837, -82.717738],
           'panoId': '',
           'links': <dynamic>[],
         };
@@ -501,10 +533,7 @@ class StreetViewInstance {
     } catch (e) {
       print('Error getting current location: $e');
       return <String, dynamic>{
-        'position': <double>[
-          27.508837,
-          -82.717738
-        ], // Default Tampa location as array
+        'position': <double>[27.508837, -82.717738],
         'panoId': '',
         'links': <dynamic>[],
       };
@@ -516,16 +545,21 @@ class StreetViewInstance {
       final pov = streetViewPanorama?.pov;
       final zoom = streetViewPanorama?.zoom;
 
+      // Ensure proper type conversion from JS interop
+      final bearing = (pov?.heading ?? 0.0).toDouble();
+      final tilt = (pov?.pitch ?? 0.0).toDouble();
+      final zoomValue = (zoom ?? 1.0).toDouble();
+
       return <String, dynamic>{
-        'bearing': pov?.heading ?? 0.0, // Use 'bearing' instead of 'heading'
-        'tilt': pov?.pitch ?? 0.0, // Use 'tilt' instead of 'pitch'
-        'zoom': zoom ?? 1.0,
+        'bearing': bearing,
+        'tilt': tilt,
+        'zoom': zoomValue,
       };
     } catch (e) {
       print('Error getting current camera: $e');
       return <String, dynamic>{
-        'bearing': 0.0, // Use 'bearing' instead of 'heading'
-        'tilt': 0.0, // Use 'tilt' instead of 'pitch'
+        'bearing': 0.0,
+        'tilt': 0.0,
         'zoom': 1.0,
       };
     }
