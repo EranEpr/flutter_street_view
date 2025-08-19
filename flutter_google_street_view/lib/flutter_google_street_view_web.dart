@@ -1,14 +1,12 @@
-import 'dart:async';
-import 'dart:html';
-import 'dart:math';
+library flutter_google_street_view_web;
 
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_google_street_view/src/web/convert.dart';
 import 'package:flutter_web_plugins/flutter_web_plugins.dart';
-import 'package:google_maps/google_maps.dart' as gmaps;
-import 'package:google_maps/google_maps.dart';
-import 'package:kotlin_scope_function/kotlin_scope_function.dart';
-import 'package:flutter_google_street_view/src/web/shims/dart_ui.dart' as ui;
+import 'package:flutter_google_street_view/src/web/plugin.dart';
 
-part 'package:flutter_google_street_view/src/web/plugin.dart';
+/// Web plugin registrant for FlutterGoogleStreetView
+class FlutterGoogleStreetViewPlugin {
+  /// Registers this plugin with the Flutter Web plugin registrar
+  static void registerWith(Registrar registrar) {
+    FlutterGoogleStreetViewWebPlugin.registerWith(registrar);
+  }
+}

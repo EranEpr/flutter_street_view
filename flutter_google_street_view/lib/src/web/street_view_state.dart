@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_google_street_view/flutter_google_street_view.dart';
-import 'package:flutter_google_street_view/flutter_google_street_view_web.dart';
 import 'package:flutter_google_street_view/src/state/street_view_base_state.dart';
+import 'package:flutter_google_street_view/src/web/flutter_google_street_view_plugin.dart';
 
 class StreetViewState extends StreetViewBaseState {
   get _onStreetViewCreated => widget.onStreetViewCreated;
