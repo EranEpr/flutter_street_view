@@ -153,7 +153,6 @@ class StreetViewInstance {
     );
 
     // Register method channel handler for this instance
-    print('Registering method channel handler for instance $instanceId');
     methodChannel.setMethodCallHandler(handleMethodCall);
   }
 
@@ -274,33 +273,42 @@ class StreetViewInstance {
       _statusListener = streetViewPanorama?.addListener(
           "status_changed",
           () {
-            try {
-              methodChannel.invokeMethod(
-                  "pano#onChange", _getCurrentLocation());
-            } catch (e) {
-              print('Error invoking pano#onChange: $e');
+            // Only fire events if Street View is initialized and has valid data
+            if (_isInitialized && streetViewPanorama?.position != null) {
+              try {
+                final locationData = _getCurrentLocation();
+                methodChannel.invokeMethod("pano#onChange", locationData);
+              } catch (e) {
+                print('Error invoking pano#onChange: $e');
+              }
             }
           }.toJS);
 
       _povListener = streetViewPanorama?.addListener(
           "pov_changed",
           () {
-            try {
-              methodChannel.invokeMethod(
-                  "camera#onChange", _getCurrentCamera());
-            } catch (e) {
-              print('Error invoking camera#onChange: $e');
+            // Only fire events if Street View is initialized
+            if (_isInitialized) {
+              try {
+                final cameraData = _getCurrentCamera();
+                methodChannel.invokeMethod("camera#onChange", cameraData);
+              } catch (e) {
+                print('Error invoking camera#onChange: $e');
+              }
             }
           }.toJS);
 
       _zoomListener = streetViewPanorama?.addListener(
           "zoom_changed",
           () {
-            try {
-              methodChannel.invokeMethod(
-                  "camera#onChange", _getCurrentCamera());
-            } catch (e) {
-              print('Error invoking camera#onChange: $e');
+            // Only fire events if Street View is initialized
+            if (_isInitialized) {
+              try {
+                final cameraData = _getCurrentCamera();
+                methodChannel.invokeMethod("camera#onChange", cameraData);
+              } catch (e) {
+                print('Error invoking camera#onChange: $e');
+              }
             }
           }.toJS);
 
@@ -365,6 +373,9 @@ class StreetViewInstance {
       case 'getCamera':
         return _getCurrentCamera();
 
+      case 'getPanoramaCamera':
+        return _getCurrentCamera();
+
       case 'setOptions':
         return _setOptions(args);
 
@@ -379,7 +390,7 @@ class StreetViewInstance {
   }
 
   Map<String, dynamic> _getInstanceState() {
-    return {
+    return <String, dynamic>{
       'instanceId': instanceId,
       'isInitialized': _isInitialized,
       'location': _getCurrentLocation(),
@@ -469,17 +480,33 @@ class StreetViewInstance {
       final position = streetViewPanorama?.position;
       final pano = streetViewPanorama?.pano;
 
-      return {
-        'latitude': position?.lat,
-        'longitude': position?.lng,
-        'panoId': pano ?? '', // Handle null pano
-      };
+      // Only return data if we have a valid position
+      if (position?.lat != null && position?.lng != null) {
+        return <String, dynamic>{
+          'position': <double>[
+            position!.lat.toDouble(),
+            position.lng.toDouble()
+          ], // Return as array, not object
+          'panoId': pano ?? '',
+          'links': <dynamic>[], // Empty links for now
+        };
+      } else {
+        // Return default Tampa location if no valid position
+        return <String, dynamic>{
+          'position': <double>[27.508837, -82.717738], // Return as array
+          'panoId': '',
+          'links': <dynamic>[],
+        };
+      }
     } catch (e) {
       print('Error getting current location: $e');
-      return {
-        'latitude': null,
-        'longitude': null,
+      return <String, dynamic>{
+        'position': <double>[
+          27.508837,
+          -82.717738
+        ], // Default Tampa location as array
         'panoId': '',
+        'links': <dynamic>[],
       };
     }
   }
@@ -489,16 +516,16 @@ class StreetViewInstance {
       final pov = streetViewPanorama?.pov;
       final zoom = streetViewPanorama?.zoom;
 
-      return {
-        'heading': pov?.heading ?? 0.0,
-        'pitch': pov?.pitch ?? 0.0,
+      return <String, dynamic>{
+        'bearing': pov?.heading ?? 0.0, // Use 'bearing' instead of 'heading'
+        'tilt': pov?.pitch ?? 0.0, // Use 'tilt' instead of 'pitch'
         'zoom': zoom ?? 1.0,
       };
     } catch (e) {
       print('Error getting current camera: $e');
-      return {
-        'heading': 0.0,
-        'pitch': 0.0,
+      return <String, dynamic>{
+        'bearing': 0.0, // Use 'bearing' instead of 'heading'
+        'tilt': 0.0, // Use 'tilt' instead of 'pitch'
         'zoom': 1.0,
       };
     }
